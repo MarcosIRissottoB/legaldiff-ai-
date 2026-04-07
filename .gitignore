@@ -194,6 +194,12 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Contract images (client documents — NEVER commit)
+data/test_contracts/
+
+# Gateway secrets (real OpenAI API key lives here — NEVER commit)
+gateway/.env
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
