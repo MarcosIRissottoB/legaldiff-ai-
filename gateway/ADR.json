@@ -1,0 +1,102 @@
+{
+  "project": "AI Gateway",
+  "version": "1.0",
+  "date": "2026-04-06",
+  "context": "Gateway centralizado para todas las llamadas a LLMs del ecosistema de proyectos. Nace dentro del monorepo de LegalDiff AI pero diseñado para ser copiado o migrado a cualquier proyecto futuro como servicio independiente. Reemplaza el acceso directo a OpenAI desde cada proyecto.",
+
+  "decision": "Implementar el Gateway con LiteLLM Proxy desplegado en Docker. Cada proyecto consume el Gateway con su propia virtual key. La API key real de OpenAI vive únicamente en el Gateway.",
+
+  "migration_path": "LiteLLM Proxy es la implementación v1. Si en el futuro se requiere lógica custom (transformación de payloads, anonimización de contratos, auditoría legal estricta), se migra a FastAPI custom manteniendo la misma interfaz API-compatible con OpenAI SDK. Los proyectos consumidores no requieren cambios al migrar.",
+
+  "reasoning": "LiteLLM Proxy provee en ~30 minutos lo que tomaría 2-3 días construir custom: cost tracking por virtual key, rate limiting RPM/TPM, fallbacks entre modelos, dashboard UI y compatibilidad total con el OpenAI SDK. La portabilidad es máxima: el Gateway completo son dos archivos (docker-compose.yml + config.yaml). Los proyectos consumidores solo cambian OPENAI_BASE_URL en su .env.",
+
+  "stack_decisions": {
+    "proxy": "LiteLLM Proxy — API-compatible con OpenAI SDK, cero cambios en proyectos consumidores",
+    "deployment": "Docker Compose — gateway/docker-compose.yml incluye litellm + postgres para persistencia de logs",
+    "config": "gateway/config.yaml — define modelos, virtual keys, budgets y rate limits",
+    "database": "PostgreSQL — persiste logs de uso, costos y métricas por proyecto",
+    "autenticacion": "Virtual keys por proyecto — cada proyecto tiene su sk-virtual-xxx, la API key real solo vive en el Gateway"
+  },
+
+  "portability": {
+    "estructura": "Todo el Gateway vive en gateway/ dentro del monorepo",
+    "para_migrar_a_otro_proyecto": "Copiar gateway/docker-compose.yml + gateway/config.yaml + gateway/.env.example. Ajustar virtual keys y budgets. Levantar con docker compose up.",
+    "archivos_que_NO_se_copian": "El resto del monorepo (src/, tests/, ADR.json de LegalDiff) — el Gateway es autocontenido en su carpeta"
+  },
+
+  "virtual_keys": {
+    "modelo": "Una virtual key por proyecto consumidor",
+    "ejemplo": {
+      "sk-legaldiff-prod": "LegalDiff AI en producción — budget $50/mes",
+      "sk-legaldiff-dev": "LegalDiff AI en desarrollo — budget $10/mes",
+      "sk-proyecto-b": "Futuro proyecto — budget a definir"
+    },
+    "rotacion": "Las virtual keys se rotan en el Gateway sin tocar los proyectos consumidores"
+  },
+
+  "modelos_configurados": {
+    "primary": "gpt-4o — usado por LegalDiff AI para Vision",
+    "fallback": "gpt-4o-mini — fallback automático si gpt-4o falla o supera budget",
+    "nota": "Agregar Claude, Gemini u otros modelos es solo config.yaml, sin tocar código"
+  },
+
+  "cost_control": {
+    "budget_por_virtual_key": "Configurable en config.yaml — soft limit (alerta) y hard limit (bloqueo)",
+    "alertas": "LiteLLM notifica por email o webhook al superar el 80% del budget",
+    "visibilidad": "Dashboard UI en puerto 4000 — costos por proyecto, por modelo, por día"
+  },
+
+  "rate_limiting": {
+    "rpm": "Requests per minute por virtual key — evita que un proyecto consuma el rate limit global",
+    "tpm": "Tokens per minute por virtual key",
+    "comportamiento": "HTTP 429 con Retry-After header cuando se supera el límite"
+  },
+
+  "endpoints": {
+    "proxy": "http://localhost:4000 — entrada para todos los proyectos consumidores",
+    "dashboard": "http://localhost:4000/ui — métricas y logs",
+    "health": "GET http://localhost:4000/health"
+  },
+
+  "estructura_archivos": {
+    "gateway/docker-compose.yml": "Levanta litellm + postgres. Variables desde gateway/.env",
+    "gateway/config.yaml": "Modelos, virtual keys, budgets, rate limits, fallbacks",
+    "gateway/.env": "OPENAI_API_KEY real + LITELLM_MASTER_KEY + DATABASE_URL. Nunca se commitea.",
+    "gateway/.env.example": "Template con variables vacías. Se commitea.",
+    "gateway/README.md": "Instrucciones de setup, cómo agregar proyectos, cómo rotar keys"
+  },
+
+  "impacto_en_proyectos_consumidores": {
+    "cambios_en_codigo": "Ninguno — el OpenAI SDK es 100% compatible",
+    "cambios_en_env": {
+      "antes": "OPENAI_API_KEY=sk-openai-real-key",
+      "despues": "OPENAI_API_KEY=sk-legaldiff-dev\nOPENAI_BASE_URL=http://localhost:4000"
+    },
+    "langfuse": "Sigue funcionando igual — el Gateway es transparente para Langfuse"
+  },
+
+  "env_vars": {
+    "gateway/.env": {
+      "OPENAI_API_KEY": "sk-openai-real-key-aqui",
+      "LITELLM_MASTER_KEY": "sk-master-para-admin",
+      "DATABASE_URL": "postgresql://litellm:litellm@postgres:5432/litellm",
+      "LITELLM_LOG": "INFO"
+    },
+    "proyectos_consumidores": {
+      "OPENAI_API_KEY": "sk-virtual-key-del-proyecto",
+      "OPENAI_BASE_URL": "http://localhost:4000"
+    }
+  },
+
+  "bypass_para_dev": {
+    "descripcion": "Si el Gateway no está levantado, los proyectos pueden apuntar directo a OpenAI comentando OPENAI_BASE_URL en su .env",
+    "nota": "Solo para desarrollo local. En staging y producción siempre via Gateway."
+  },
+
+  "tradeoffs": [
+    "LiteLLM agrega un hop de red (~5-20ms latencia extra) — aceptable para análisis de contratos que tarda segundos",
+    "Dependencia de proyecto open source externo — mitigada por el migration_path documentado a FastAPI custom",
+    "El Gateway debe estar levantado para que funcionen los proyectos — en dev se puede bypassear apuntando directo a OpenAI",
+    "La API key real de OpenAI queda centralizada — reduce superficie de ataque pero es un single point of failure de credenciales"
+  ]
+}

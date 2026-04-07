@@ -1,0 +1,48 @@
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  fallbacks:
+    - gpt-4o: [gpt-4o-mini]
+  num_retries: 3
+  request_timeout: 120
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  alerting:
+    - slack
+  alert_types:
+    - budget_alerts
+
+  budget_duration: 30d
+
+key_management:
+  keys:
+    - key_name: sk-legaldiff-dev
+      max_budget: 10
+      rpm_limit: 30
+      tpm_limit: 100000
+      metadata:
+        project: legaldiff-ai
+        environment: development
+
+    - key_name: sk-legaldiff-prod
+      max_budget: 50
+      rpm_limit: 60
+      tpm_limit: 500000
+      metadata:
+        project: legaldiff-ai
+        environment: production
+
+  budget_alerts:
+    - threshold: 0.8
+      type: soft_limit
