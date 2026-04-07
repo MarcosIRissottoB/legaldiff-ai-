@@ -5,11 +5,14 @@ Reemplaza 40hs/semana de revisión manual en LegalMove.
 
 ## Entry point
 
-API REST: `uvicorn src.main:app --reload`
+```bash
+source .venv/bin/activate
+uvicorn src.main:app --reload
+```
 
 ## Tech stack
 
-- Python 3.10+
+- Python 3.11+ (NUNCA usar el python3 del sistema — siempre `.venv`)
 - LLM: GPT-4o Vision (gpt-4o) vía OpenAI SDK
 - Validación: Pydantic v2 con `model_validate()` explícito
 - Observabilidad: Langfuse v4 con `@observe` decorator + `langfuse.openai` drop-in

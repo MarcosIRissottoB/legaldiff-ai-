@@ -96,7 +96,7 @@ legaldiff-ai/
 
 ## Requisitos
 
-- Python 3.10+ (3.11 recomendado)
+- Python 3.11+ (**no** usar el `python3` del sistema — en macOS suele ser 3.9 y el código usa sintaxis 3.10+)
 - Docker y Docker Compose
 - API key de OpenAI con acceso a GPT-4o
 - Cuenta en [Langfuse](https://cloud.langfuse.com) (gratis)
@@ -110,7 +110,17 @@ git clone <repo-url>
 cd legaldiff-ai
 ```
 
-### 2. Configurar variables de entorno
+### 2. Crear virtualenv con Python 3.11+
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+> **Importante**: NO usar `python3` directamente — en macOS es 3.9.x y el codigo usa `str | None` (3.10+). Siempre activar el venv antes de trabajar.
+
+### 3. Configurar variables de entorno
 
 ```bash
 cp .env.example .env
@@ -140,7 +150,7 @@ LITELLM_LOG=INFO
 
 > **Tip**: si no queres usar el Gateway por ahora, comenta `OPENAI_BASE_URL` y pone tu key real de OpenAI directo en `OPENAI_API_KEY` del `.env` raiz.
 
-### 3. Colocar imagenes de prueba
+### 4. Colocar imagenes de prueba
 
 Los JPGs de contratos van en `data/test_contracts/` (estan en .gitignore, nunca se commitean):
 
@@ -185,12 +195,8 @@ curl http://localhost:4000/health               # gateway health
 ## Levantar sin Docker (desarrollo local)
 
 ```bash
-# Crear virtualenv
-python3.11 -m venv .venv
+# Activar venv (creado en paso 2)
 source .venv/bin/activate
-
-# Instalar dependencias
-pip install -r requirements.txt
 
 # PostgreSQL local (si usas brew)
 brew services start postgresql
@@ -247,8 +253,8 @@ No requiere autenticacion. Retorna `{"status": "ok"}` si la app y la DB estan sa
 ### Tests automatizados (29 tests)
 
 ```bash
-# Con virtualenv activado
-python3.11 -m pytest tests/ -v
+source .venv/bin/activate
+pytest tests/ -v
 ```
 
 Los tests usan SQLite in-memory y mockean las llamadas a OpenAI. No necesitan Docker, API keys, ni conexion a internet.
