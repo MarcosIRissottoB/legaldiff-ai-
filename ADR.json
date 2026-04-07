@@ -1,0 +1,284 @@
+{
+  "project": "LegalDiff AI",
+  "version": "1.1",
+  "date": "2026-04-06",
+  "context": "Sistema multi-agente para LegalMove que reemplaza 40 horas semanales de revisión manual de contratos. Recibe imágenes escaneadas de un contrato original y su enmienda, detecta cambios y devuelve un JSON validado con trazabilidad completa. Expuesto como API REST para integración con sistemas downstream de LegalMove.",
+
+  "decision": "Utilizar GPT-4o Vision para el análisis de imágenes, implementando un patrón de handoff secuencial para la coordinación de dos agentes especializados. La validación de datos se realiza con Pydantic v2, la observabilidad con Langfuse, y los resultados se persisten en PostgreSQL. El pipeline se expone vía FastAPI.",
+
+  "reasoning": "GPT-4o Vision es el único modelo que combina capacidad de lectura de imágenes escaneadas con comprensión de texto legal estructurado, eliminando la necesidad de OCR tradicional. El patrón de handoff garantiza que el ExtractionAgent reciba contexto del ContextualizationAgent antes de detectar cambios, reduciendo alucinaciones. Pydantic v2 garantiza integridad del output para sistemas downstream. Langfuse provee trazabilidad auditable requerida en entornos de producción legal. PostgreSQL permite auditoría histórica de análisis y comparación de resultados entre ejecuciones. FastAPI expone el pipeline para integración con LegalMove sin necesidad de acceso directo al servidor.",
+
+  "stack_decisions": {
+    "LLM": "GPT-4o Vision — soporta input de imágenes JPEG/PNG en base64, necesario para contratos escaneados",
+    "Validación": "Pydantic v2 + model_validate() explícito post-LLM call — más control sobre errores de validación que response_format directo",
+    "Observabilidad": "Langfuse — drop-in replacement del SDK de OpenAI + decorador @observe para trazabilidad automática",
+    "Lenguaje": "Python 3.10+ con python-dotenv para manejo seguro de variables de entorno",
+    "Orquestación": "Patrón handoff secuencial — sin frameworks adicionales, orquestación explícita en main.py",
+    "API": "FastAPI + uvicorn — entrada HTTP multipart/form-data para integración con LegalMove. Entry point: uvicorn src.main:app",
+    "Persistencia": "PostgreSQL + SQLAlchemy + psycopg2-binary — almacena AnalysisRecord con result JSON, tokens_used y latency_ms",
+    "Migraciones": "Alembic — manejo de schema de DB en producción (no create_all)",
+    "Autenticación": "API key via header X-API-Key — comparación segura con secrets.compare_digest()",
+    "Logging": "structlog con JSON formatter (prod) / ConsoleRenderer (dev) + correlation ID por request (X-Request-ID)",
+    "Prompts": "Archivos .txt separados en src/prompts/ — facilita iteración de prompts sin tocar código",
+    "Entorno": "Local + Docker — docker-compose.yml incluye app + postgres para deploy en LegalMove",
+    "Testing": "pytest con fixtures de contratos reales (JPGs en data/test_contracts/) — llamadas a OpenAI mockeadas"
+  },
+
+  "resolved_decisions": {
+    "structured_outputs_vs_model_validate": "Usar model_validate() explícito. Razón: permite constraints avanzados en el schema Pydantic en el futuro (min_length, validadores custom) sin romper la integración con OpenAI.",
+    "prompts_storage": "Archivos .txt en src/prompts/. Razón: el equipo de producto puede iterar prompts sin PR al código fuente.",
+    "multipart_vs_paths": "POST /analyze recibe multipart/form-data con 2 UploadFile, no paths JSON. Razón: server-to-server, los archivos se leen en memoria sin persistir en disco.",
+    "retry_strategy": "tenacity con 3 intentos y exponential backoff para todas las llamadas a OpenAI."
+  },
+
+  "pydantic_schema": {
+    "model": "ContractChangeOutput",
+    "fields": {
+      "sections_changed": "List[str] — identificadores de secciones modificadas (ej: ['Cláusula 3', 'Cláusula 5'])",
+      "topics_touched": "List[str] — categorías legales afectadas (ej: ['pago', 'terminación', 'protección de datos'])",
+      "summary_of_the_change": "str — descripción detallada y precisa de todos los cambios detectados"
+    },
+    "validacion": "model_validate() con try/except ValidationError — mensajes de error claros y logging estructurado",
+    "nota": "NO usar response_format=ContractChangeOutput en .parse(). Usar model_validate() explícito sobre el string de respuesta del LLM."
+  },
+
+  "persistence_schema": {
+    "model": "AnalysisRecord",
+    "fields": {
+      "id": "UUID — generado automáticamente",
+      "created_at": "datetime — timestamp de la ejecución",
+      "original_filename": "str — nombre del archivo original (no el contenido)",
+      "amendment_filename": "str — nombre del archivo de enmienda (no el contenido)",
+      "result": "JSON — ContractChangeOutput serializado",
+      "tokens_used": "int — total de tokens consumidos en la ejecución",
+      "latency_ms": "int — latencia total del pipeline en ms"
+    },
+    "nota": "Nunca almacenar el contenido de los contratos, solo metadata y resultado del análisis."
+  },
+
+  "api_endpoints": {
+    "POST /analyze": {
+      "content_type": "multipart/form-data",
+      "body": "original_file: UploadFile, amendment_file: UploadFile",
+      "headers": "X-API-Key: required",
+      "response": "AnalyzeResponse {analysis_id: UUID, result: ContractChangeOutput}",
+      "descripcion": "Corre el pipeline completo y persiste el resultado"
+    },
+    "GET /analyses": {
+      "headers": "X-API-Key: required",
+      "query_params": "limit: int = 20, offset: int = 0",
+      "response": "{items: List[AnalysisRecordResponse], total: int, limit: int, offset: int}",
+      "descripcion": "Lista análisis anteriores para auditoría con paginación"
+    },
+    "GET /health": {
+      "headers": "ninguno (público)",
+      "response": "{status: 'ok', version: '0.1.0', timestamp: ISO8601}",
+      "descripcion": "Health check con verificación de DB (SELECT 1)"
+    }
+  },
+
+  "langfuse_observability": {
+    "trace_root": "contract-analysis",
+    "spans": [
+      {
+        "name": "parse_original_contract",
+        "tipo": "generation",
+        "registra": ["input: filename imagen", "output: texto extraído", "tokens consumed", "latencia ms"]
+      },
+      {
+        "name": "parse_amendment_contract",
+        "tipo": "generation",
+        "registra": ["input: filename imagen", "output: texto extraído", "tokens consumed", "latencia ms"]
+      },
+      {
+        "name": "contextualization_agent",
+        "tipo": "span",
+        "registra": ["input: ambos textos", "output: mapa contextual", "tokens consumed", "latencia ms"]
+      },
+      {
+        "name": "extraction_agent",
+        "tipo": "generation",
+        "registra": ["input: mapa contextual + ambos textos", "output: ContractChangeOutput JSON", "tokens consumed", "latencia ms"]
+      }
+    ],
+    "jerarquia": "trace padre contract-analysis contiene los 4 spans hijos en orden secuencial",
+    "integracion": "from langfuse.openai import openai — drop-in replacement habilita tracking automático"
+  },
+
+  "modules": [
+    {
+      "archivo": "src/main.py",
+      "responsabilidad": "Entry point FastAPI. Define POST /analyze (multipart), GET /analyses (paginado), GET /health. Orquesta el pipeline completo. Inicia trace raíz de Langfuse. Persiste AnalysisRecord. Lifespan: configure_logging + alembic upgrade head.",
+      "inputs": "POST multipart: original_file: UploadFile, amendment_file: UploadFile",
+      "outputs": "AnalyzeResponse con analysis_id + ContractChangeOutput"
+    },
+    {
+      "archivo": "src/config.py",
+      "responsabilidad": "Carga .env con python-dotenv. Valida variables requeridas al arranque. Exporta constantes tipadas. OPENAI_BASE_URL y LEGALDIFF_API_KEY opcionales.",
+      "inputs": ".env",
+      "outputs": "validate_env() + constantes exportadas"
+    },
+    {
+      "archivo": "src/database.py",
+      "responsabilidad": "SQLAlchemy engine, SessionLocal, Base declarativa, get_db() dependency. Sin create_all() — usa Alembic.",
+      "inputs": "DATABASE_URL",
+      "outputs": "engine, SessionLocal, Base, get_db()"
+    },
+    {
+      "archivo": "src/auth.py",
+      "responsabilidad": "Dependency verify_api_key(). Compara X-API-Key header contra LEGALDIFF_API_KEY con secrets.compare_digest().",
+      "inputs": "X-API-Key header",
+      "outputs": "HTTP 401 o pass-through"
+    },
+    {
+      "archivo": "src/logging_config.py",
+      "responsabilidad": "Configura structlog (JSON prod / Console dev). RequestIDMiddleware genera UUID por request en X-Request-ID.",
+      "inputs": "ENV variable",
+      "outputs": "configure_logging() + RequestIDMiddleware"
+    },
+    {
+      "archivo": "src/image_parser.py",
+      "responsabilidad": "Función parse_contract_image(image_bytes, filename). Valida extensión y tamaño (max 20MB). Codifica en base64. Llama GPT-4o Vision con prompt desde src/prompts/image_parser.txt. Retry con tenacity.",
+      "inputs": "image_bytes: bytes, filename: str",
+      "outputs": "tuple[str, int] — (texto_extraido, tokens_usados)"
+    },
+    {
+      "archivo": "src/agents/contextualization_agent.py",
+      "responsabilidad": "ContextualizationAgent. Recibe ambos textos parseados. Produce mapa estructurado: secciones, correspondencias entre documentos, propósito de cada bloque. NO detecta cambios — solo mapea contexto. System prompt desde src/prompts/contextualization_agent.txt. Retry con tenacity.",
+      "inputs": "original_text: str, amendment_text: str",
+      "outputs": "tuple[str, int] — (context_map, tokens_usados)"
+    },
+    {
+      "archivo": "src/agents/extraction_agent.py",
+      "responsabilidad": "ExtractionAgent. Recibe el mapa contextual del Agente 1 más ambos textos. Identifica adiciones, eliminaciones y modificaciones. Devuelve ContractChangeOutput. System prompt desde src/prompts/extraction_agent.txt. response_format=json_object + model_validate(). Retry con tenacity.",
+      "inputs": "context_map: str, original_text: str, amendment_text: str",
+      "outputs": "tuple[ContractChangeOutput, int] — (resultado validado, tokens_usados)"
+    },
+    {
+      "archivo": "src/models.py",
+      "responsabilidad": "Define ContractChangeOutput, AnalyzeResponse, AnalysisRecord, AnalysisRecordResponse. Sin AnalyzeRequest (reemplazado por UploadFile).",
+      "schema": "ContractChangeOutput: sections_changed + topics_touched + summary_of_the_change. AnalysisRecord: id + created_at + original_filename + amendment_filename + result + tokens_used + latency_ms"
+    },
+    {
+      "archivo": "src/prompts/image_parser.txt",
+      "responsabilidad": "System prompt para extracción de texto legal desde imagen. No modificar sin revisar test_image_parser.py."
+    },
+    {
+      "archivo": "src/prompts/contextualization_agent.txt",
+      "responsabilidad": "System prompt del Analista Senior. No modificar sin revisar test_agents.py."
+    },
+    {
+      "archivo": "src/prompts/extraction_agent.txt",
+      "responsabilidad": "System prompt del Auditor Legal. No modificar sin revisar test_agents.py y los casos de prueba del ADR."
+    }
+  ],
+
+  "estructura_proyecto": {
+    "directorios": [
+      "src/main.py",
+      "src/config.py",
+      "src/database.py",
+      "src/auth.py",
+      "src/logging_config.py",
+      "src/image_parser.py",
+      "src/models.py",
+      "src/agents/contextualization_agent.py",
+      "src/agents/extraction_agent.py",
+      "src/prompts/image_parser.txt",
+      "src/prompts/contextualization_agent.txt",
+      "src/prompts/extraction_agent.txt",
+      "tests/conftest.py",
+      "tests/test_models.py",
+      "tests/test_image_parser.py",
+      "tests/test_agents.py",
+      "tests/test_main.py",
+      "alembic.ini",
+      "migrations/env.py",
+      "migrations/versions/0001_initial_analysis_records.py",
+      "data/test_contracts/documento_1__original.jpg",
+      "data/test_contracts/documento_1__enmienda.jpg",
+      "data/test_contracts/documento_2__original.jpg",
+      "data/test_contracts/documento_2__enmienda.jpg",
+      "data/test_contracts/documento_3__original.jpg",
+      "data/test_contracts/documento_3__enmienda.jpg",
+      "Dockerfile",
+      "docker-compose.yml",
+      "gateway/config.yaml",
+      "gateway/docker-compose.yml",
+      "gateway/.env.example",
+      "gateway/README.md",
+      ".env.example",
+      "requirements.txt",
+      "README.md"
+    ]
+  },
+
+  "env_vars": {
+    "OPENAI_API_KEY": "sk-legaldiff-dev (virtual key del Gateway)",
+    "OPENAI_BASE_URL": "http://localhost:4000 (opcional — apunta al Gateway)",
+    "LANGFUSE_PUBLIC_KEY": "pk-lf-xxx",
+    "LANGFUSE_SECRET_KEY": "sk-lf-xxx",
+    "LANGFUSE_HOST": "https://cloud.langfuse.com",
+    "DATABASE_URL": "postgresql://user:password@localhost:5432/legaldiff",
+    "LEGALDIFF_API_KEY": "key para autenticación de clientes de la API"
+  },
+
+  "error_handling": {
+    "image_parser": "ValueError si extensión no es JPEG/PNG o tamaño > 20MB. RuntimeError si la API falla después de 3 retries.",
+    "agents": "RuntimeError si la llamada al LLM falla después de retries. Span Langfuse con status='error' antes de relanzar.",
+    "pydantic": "ValidationError capturado con mensaje claro que indica qué campo falló.",
+    "env_vars": "Validación al inicio — falla rápido listando TODAS las variables faltantes.",
+    "api": "HTTP 401 sin X-API-Key válida. HTTP 422 para inputs inválidos. HTTP 500 con request_id para errores del pipeline. HTTP 503 si DB no responde en /health."
+  },
+
+  "casos_de_prueba": [
+    {
+      "par": 1,
+      "tipo": "cambios simples — Licencia de Software",
+      "partes": "TechNova S.A. (Licenciante) ↔ DataBridge Soluciones S.R.L. (Licenciatario)",
+      "archivos": ["documento_1__original.jpg", "documento_1__enmienda.jpg"],
+      "cambios_esperados": [
+        "Plazo: 12→24 meses",
+        "Pago: USD 12.000→15.000",
+        "Soporte: email→email+chat",
+        "Terminación: 30→60 días",
+        "Nueva cláusula: Protección de Datos"
+      ]
+    },
+    {
+      "par": 2,
+      "tipo": "cambios complejos — Consultoría",
+      "partes": "Orion Consulting Group (Consultor) ↔ GreenWave Energía S.A. (Cliente)",
+      "archivos": ["documento_2__original.jpg", "documento_2__enmienda.jpg"],
+      "cambios_esperados": [
+        "Alcance: agregado análisis regulatorio",
+        "Duración: 6→9 meses",
+        "Honorarios: USD 8.000→9.500",
+        "Entregables: mensuales→quincenales",
+        "Nueva cláusula: Propiedad Intelectual"
+      ]
+    },
+    {
+      "par": 3,
+      "tipo": "cambios menores — SaaS",
+      "partes": "CloudMetrics Ltd. (Proveedor) ↔ RetailPulse S.A. (Cliente)",
+      "archivos": ["documento_3__original.jpg", "documento_3__enmienda.jpg"],
+      "cambios_esperados": [
+        "Precio: USD 1.200→1.250",
+        "Disponibilidad: 99,5%→99,9%",
+        "Soporte: email→email+tickets"
+      ]
+    }
+  ],
+
+  "tradeoffs": [
+    "GPT-4o Vision es más costoso que OCR tradicional pero elimina ruido y respeta jerarquía de cláusulas — crítico para precisión legal",
+    "Handoff secuencial introduce latencia vs procesamiento paralelo, pero garantiza que el Agente 2 tenga contexto completo del Agente 1",
+    "model_validate() explícito agrega una línea de código pero permite constraints avanzados en el schema sin romper la integración con OpenAI",
+    "PostgreSQL agrega infraestructura pero habilita auditoría histórica requerida en entornos legales",
+    "FastAPI sobre CLI agrega complejidad inicial pero permite integración directa con LegalMove sin acceso al servidor",
+    "Multipart upload vs paths: los bytes se leen en memoria (más seguro) pero limita el tamaño de archivo a 20MB",
+    "tenacity retry agrega latencia en caso de fallo pero previene errores transitorios de la API de OpenAI",
+    "LiteLLM Gateway agrega ~5-20ms latencia extra pero centraliza credenciales y habilita cost control por proyecto"
+  ]
+}
