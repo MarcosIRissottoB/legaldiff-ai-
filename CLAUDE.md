@@ -13,7 +13,7 @@ uvicorn src.main:app --reload
 ## Tech stack
 
 - Python 3.11+ (NUNCA usar el python3 del sistema — siempre `.venv`)
-- LLM: GPT-4o Vision (gpt-4o) vía OpenAI SDK
+- LLM: GPT-4o Vision (gpt-4o) vía LangChain (`ChatOpenAI` de `langchain-openai`)
 - Validación: Pydantic v2 con `model_validate()` explícito
 - Observabilidad: Langfuse v4 con `@observe` decorator + `langfuse.openai` drop-in
 - API: FastAPI + uvicorn (multipart/form-data upload)
@@ -48,8 +48,8 @@ image_parser(amendment) ─┘
 - `src/auth.py` — verify_api_key() con secrets.compare_digest()
 - `src/logging_config.py` — structlog + RequestIDMiddleware (X-Request-ID)
 - `src/image_parser.py` — parse_contract_image(bytes, filename) → (str, int). Retry con tenacity
-- `src/agents/contextualization_agent.py` — run(original, amendment) → (str, int). Retry con tenacity
-- `src/agents/extraction_agent.py` — run(context_map, original, amendment) → (ContractChangeOutput, int). model_validate() + retry
+- `src/agents/contextualization_agent.py` — run(original, amendment) → (str, int). LangChain ChatOpenAI + retry con tenacity
+- `src/agents/extraction_agent.py` — run(context_map, original, amendment) → (ContractChangeOutput, int). LangChain ChatOpenAI + model_validate() + retry
 - `src/prompts/` — system prompts de agentes en archivos separados
 
 ## API Endpoints

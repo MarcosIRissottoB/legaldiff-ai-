@@ -4,12 +4,13 @@ Sistema multi-agente que reemplaza 40 horas semanales de revision manual de cont
 
 ## Que hace
 
-1. Recibe 2 imagenes (contrato original + enmienda) via API REST
+1. Recibe 2 imagenes (contrato original + enmienda) via CLI o API REST
 2. Extrae el texto legal de cada imagen usando GPT-4o Vision
-3. Un primer agente (ContextualizationAgent) mapea la estructura de ambos documentos
-4. Un segundo agente (ExtractionAgent) detecta todos los cambios entre ambos
-5. Devuelve un JSON validado con secciones cambiadas, temas legales afectados y un resumen detallado
-6. Persiste el resultado en PostgreSQL para auditoria
+3. Un primer agente (ContextualizationAgent) mapea la estructura de ambos documentos — orquestado con LangChain
+4. Un segundo agente (ExtractionAgent) detecta todos los cambios entre ambos — orquestado con LangChain
+5. Valida el resultado con Pydantic (`model_validate()`) y devuelve un JSON estructurado
+6. Registra cada paso en Langfuse con trazabilidad completa (spans jerarquicos)
+7. Persiste el resultado en PostgreSQL para auditoria (modo API)
 
 ## Arquitectura
 
@@ -209,9 +210,29 @@ alembic upgrade head
 uvicorn src.main:app --reload --port 8000
 ```
 
+## Stack tecnico
+
+| Componente | Tecnologia |
+|-----------|------------|
+| LLM | GPT-4o Vision via LangChain (`ChatOpenAI` de `langchain-openai`) |
+| Orquestacion de agentes | LangChain (`SystemMessage`, `HumanMessage`, `ChatOpenAI`) |
+| Validacion | Pydantic v2 con `model_validate()` explicito |
+| Observabilidad | Langfuse v4 con `@observe` decorator + OpenTelemetry |
+| API | FastAPI + uvicorn (multipart/form-data upload) |
+| DB | PostgreSQL + SQLAlchemy + Alembic |
+| Testing | pytest con fixtures de contratos reales + mocks |
+
 ## Como usar
 
-### Analizar un par de contratos
+### Opcion 1 — CLI (script directo)
+
+```bash
+python src/main.py data/test_contracts/documento_1__original.jpg data/test_contracts/documento_1__enmienda.jpg
+```
+
+Imprime el JSON resultado en stdout y los tokens usados en stderr.
+
+### Opcion 2 — API REST
 
 ```bash
 curl -X POST http://localhost:8000/analyze \
@@ -316,6 +337,24 @@ LiteLLM Proxy centraliza todas las llamadas a OpenAI. La key real vive solo en e
 - **Portabilidad**: copiar `gateway/` a otro proyecto
 
 Ver [gateway/README.md](gateway/README.md) para documentacion completa.
+
+## Trazabilidad con Langfuse
+
+Cada ejecucion del pipeline genera una traza jerarquica en Langfuse:
+
+```
+contract-analysis (trace raiz — @observe)
+  ├── parse_contract_image (span — original)
+  │   └── GPT-4o Vision (generation — langfuse.openai drop-in)
+  ├── parse_contract_image (span — enmienda)
+  │   └── GPT-4o Vision (generation — langfuse.openai drop-in)
+  ├── contextualization-agent (span — @observe)
+  │   └── ChatOpenAI (generation — LangChain)
+  └── extraction-agent (span — @observe)
+      └── ChatOpenAI (generation — LangChain)
+```
+
+Cada span registra: inputs, outputs, latencia y tokens. Visible en el dashboard de Langfuse (`cloud.langfuse.com`).
 
 ## Decisiones de arquitectura
 
