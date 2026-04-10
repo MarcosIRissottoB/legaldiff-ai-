@@ -197,6 +197,9 @@ cython_debug/
 # Contract images (client documents — NEVER commit)
 data/test_contracts/
 
+# Presentation notes (personal — not a deliverable)
+PRESENTACION.md
+
 # Gateway secrets (real OpenAI API key lives here — NEVER commit)
 gateway/.env
 
