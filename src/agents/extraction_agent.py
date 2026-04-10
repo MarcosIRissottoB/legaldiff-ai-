@@ -1,15 +1,15 @@
 import json
 from pathlib import Path
 
-from langfuse.openai import openai
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langfuse import observe
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import OPENAI_API_KEY, OPENAI_BASE_URL
 from src.models import ContractChangeOutput
 
-PROMPT_PATH: str = str(
-    Path(__file__).parent.parent / "prompts" / "extraction_agent.txt"
-)
+PROMPT_PATH: str = str(Path(__file__).parent.parent / "prompts" / "extraction_agent.txt")
 
 
 def _load_prompt() -> str:
@@ -17,38 +17,35 @@ def _load_prompt() -> str:
         return f.read().strip()
 
 
-def _get_client() -> openai.OpenAI:
-    kwargs: dict[str, str] = {"api_key": OPENAI_API_KEY}
+def _get_llm() -> ChatOpenAI:
+    kwargs: dict = {
+        "model": "gpt-4o",
+        "api_key": OPENAI_API_KEY,
+        "max_tokens": 4096,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
+    }
     if OPENAI_BASE_URL:
         kwargs["base_url"] = OPENAI_BASE_URL
-    return openai.OpenAI(**kwargs)
+    return ChatOpenAI(**kwargs)
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10), reraise=True)
-def _call_llm(
-    client: openai.OpenAI,
-    system_prompt: str,
-    user_content: str,
+def _invoke_llm(
+    llm: ChatOpenAI,
+    messages: list,
 ) -> tuple[str, int]:
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        max_tokens=4096,
-        response_format={"type": "json_object"},
-    )
-    text = response.choices[0].message.content or ""
-    tokens = response.usage.total_tokens if response.usage else 0
-    return text.strip(), tokens
+    response = llm.invoke(messages)
+    tokens = 0
+    if response.usage_metadata:
+        tokens = response.usage_metadata.get("total_tokens", 0)
+    return response.content.strip(), tokens
 
 
+@observe(name="extraction-agent")
 def run(
     context_map: str,
     original_text: str,
     amendment_text: str,
-    langfuse_parent: object | None = None,
 ) -> tuple[ContractChangeOutput, int]:
     """
     Detecta cambios entre original y enmienda usando el mapa de contexto.
@@ -57,16 +54,21 @@ def run(
         Tupla (ContractChangeOutput validado, tokens_usados).
     """
     system_prompt = _load_prompt()
-    client = _get_client()
+    llm = _get_llm()
 
-    user_content = (
-        f"MAPA DE CONTEXTO:\n{context_map}\n\n"
-        f"TEXTO ORIGINAL:\n{original_text}\n\n"
-        f"TEXTO ENMIENDA:\n{amendment_text}"
-    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(
+            content=(
+                f"MAPA DE CONTEXTO:\n{context_map}\n\n"
+                f"TEXTO ORIGINAL:\n{original_text}\n\n"
+                f"TEXTO ENMIENDA:\n{amendment_text}"
+            )
+        ),
+    ]
 
     try:
-        raw_content, tokens = _call_llm(client, system_prompt, user_content)
+        raw_content, tokens = _invoke_llm(llm, messages)
     except Exception as e:
         raise RuntimeError(f"Error en ExtractionAgent: {e}") from e
 

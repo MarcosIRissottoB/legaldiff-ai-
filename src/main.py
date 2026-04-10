@@ -178,3 +178,40 @@ def health_check(db: Session = Depends(get_db)) -> dict:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         ) from e
+
+
+if __name__ == "__main__":
+    import argparse
+    import json as json_module
+    import sys
+    from pathlib import Path
+
+    configure_logging()
+    validate_env()
+
+    parser = argparse.ArgumentParser(description="LegalDiff AI — Análisis de cambios contractuales")
+    parser.add_argument("original", help="Path a la imagen del contrato original (JPEG/PNG)")
+    parser.add_argument("amendment", help="Path a la imagen de la enmienda (JPEG/PNG)")
+    args = parser.parse_args()
+
+    original_path = Path(args.original)
+    amendment_path = Path(args.amendment)
+
+    if not original_path.exists():
+        print(f"Error: archivo no encontrado: {original_path}", file=sys.stderr)
+        sys.exit(1)
+    if not amendment_path.exists():
+        print(f"Error: archivo no encontrado: {amendment_path}", file=sys.stderr)
+        sys.exit(1)
+
+    result_dict, total_tokens = _run_pipeline(
+        original_path.read_bytes(),
+        original_path.name,
+        amendment_path.read_bytes(),
+        amendment_path.name,
+    )
+
+    print(json_module.dumps(result_dict, indent=2, ensure_ascii=False))
+    print(f"\nTokens totales: {total_tokens}", file=sys.stderr)
+
+    Langfuse().flush()

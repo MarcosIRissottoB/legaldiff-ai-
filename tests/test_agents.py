@@ -9,10 +9,10 @@ from src.models import ContractChangeOutput
 
 
 class TestContextualizationAgent:
-    @patch("src.agents.contextualization_agent._get_client")
-    @patch("src.agents.contextualization_agent._call_llm")
+    @patch("src.agents.contextualization_agent._get_llm")
+    @patch("src.agents.contextualization_agent._invoke_llm")
     def test_successful_contextualization(
-        self, mock_llm: MagicMock, mock_client: MagicMock
+        self, mock_invoke: MagicMock, mock_llm: MagicMock
     ) -> None:
         context_map = json.dumps(
             {
@@ -27,28 +27,26 @@ class TestContextualizationAgent:
                 ]
             }
         )
-        mock_llm.return_value = (context_map, 200)
+        mock_invoke.return_value = (context_map, 200)
 
         result, tokens = run_contextualization("texto original", "texto enmienda")
 
         assert "sections" in result
         assert tokens == 200
 
-    @patch("src.agents.contextualization_agent._get_client")
-    @patch("src.agents.contextualization_agent._call_llm")
-    def test_api_error(self, mock_llm: MagicMock, mock_client: MagicMock) -> None:
-        mock_llm.side_effect = Exception("Timeout")
+    @patch("src.agents.contextualization_agent._get_llm")
+    @patch("src.agents.contextualization_agent._invoke_llm")
+    def test_api_error(self, mock_invoke: MagicMock, mock_llm: MagicMock) -> None:
+        mock_invoke.side_effect = Exception("Timeout")
 
         with pytest.raises(RuntimeError, match="ContextualizationAgent"):
             run_contextualization("texto", "texto")
 
 
 class TestExtractionAgent:
-    @patch("src.agents.extraction_agent._get_client")
-    @patch("src.agents.extraction_agent._call_llm")
-    def test_successful_extraction(
-        self, mock_llm: MagicMock, mock_client: MagicMock
-    ) -> None:
+    @patch("src.agents.extraction_agent._get_llm")
+    @patch("src.agents.extraction_agent._invoke_llm")
+    def test_successful_extraction(self, mock_invoke: MagicMock, mock_llm: MagicMock) -> None:
         raw_output = json.dumps(
             {
                 "sections_changed": ["Cláusula 3 - Plazo"],
@@ -56,7 +54,7 @@ class TestExtractionAgent:
                 "summary_of_the_change": "Plazo extendido de 12 a 24 meses.",
             }
         )
-        mock_llm.return_value = (raw_output, 300)
+        mock_invoke.return_value = (raw_output, 300)
 
         result, tokens = run_extraction("{}", "original", "amendment")
 
@@ -64,20 +62,18 @@ class TestExtractionAgent:
         assert result.sections_changed == ["Cláusula 3 - Plazo"]
         assert tokens == 300
 
-    @patch("src.agents.extraction_agent._get_client")
-    @patch("src.agents.extraction_agent._call_llm")
-    def test_invalid_json_from_llm(
-        self, mock_llm: MagicMock, mock_client: MagicMock
-    ) -> None:
-        mock_llm.return_value = ("esto no es json", 100)
+    @patch("src.agents.extraction_agent._get_llm")
+    @patch("src.agents.extraction_agent._invoke_llm")
+    def test_invalid_json_from_llm(self, mock_invoke: MagicMock, mock_llm: MagicMock) -> None:
+        mock_invoke.return_value = ("esto no es json", 100)
 
         with pytest.raises(json.JSONDecodeError):
             run_extraction("{}", "original", "amendment")
 
-    @patch("src.agents.extraction_agent._get_client")
-    @patch("src.agents.extraction_agent._call_llm")
+    @patch("src.agents.extraction_agent._get_llm")
+    @patch("src.agents.extraction_agent._invoke_llm")
     def test_missing_field_validation_error(
-        self, mock_llm: MagicMock, mock_client: MagicMock
+        self, mock_invoke: MagicMock, mock_llm: MagicMock
     ) -> None:
         raw_output = json.dumps(
             {
@@ -86,15 +82,15 @@ class TestExtractionAgent:
                 # falta summary_of_the_change
             }
         )
-        mock_llm.return_value = (raw_output, 100)
+        mock_invoke.return_value = (raw_output, 100)
 
         with pytest.raises(ValueError):
             run_extraction("{}", "original", "amendment")
 
-    @patch("src.agents.extraction_agent._get_client")
-    @patch("src.agents.extraction_agent._call_llm")
-    def test_api_error(self, mock_llm: MagicMock, mock_client: MagicMock) -> None:
-        mock_llm.side_effect = Exception("API error")
+    @patch("src.agents.extraction_agent._get_llm")
+    @patch("src.agents.extraction_agent._invoke_llm")
+    def test_api_error(self, mock_invoke: MagicMock, mock_llm: MagicMock) -> None:
+        mock_invoke.side_effect = Exception("API error")
 
         with pytest.raises(RuntimeError, match="ExtractionAgent"):
             run_extraction("{}", "original", "amendment")

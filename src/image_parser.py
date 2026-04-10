@@ -1,6 +1,7 @@
 import base64
 from pathlib import Path
 
+from langfuse import observe
 from langfuse.openai import openai
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -25,9 +26,7 @@ def _validate_input(image_bytes: bytes, filename: str) -> str:
             f"Formatos válidos: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
     if len(image_bytes) > MAX_FILE_SIZE:
-        raise ValueError(
-            f"El archivo excede el límite de 20MB ({len(image_bytes)} bytes)"
-        )
+        raise ValueError(f"El archivo excede el límite de 20MB ({len(image_bytes)} bytes)")
     if suffix in {".jpg", ".jpeg"}:
         return "image/jpeg"
     return "image/png"
@@ -56,9 +55,7 @@ def _call_vision_api(
                 "content": [
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_image}"
-                        },
+                        "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
                     }
                 ],
             },
@@ -70,10 +67,10 @@ def _call_vision_api(
     return text.strip(), tokens
 
 
+@observe()
 def parse_contract_image(
     image_bytes: bytes,
     filename: str,
-    langfuse_parent: object | None = None,
 ) -> tuple[str, int]:
     """
     Valida, codifica y envía una imagen de contrato a GPT-4o Vision.
@@ -81,7 +78,6 @@ def parse_contract_image(
     Args:
         image_bytes: Contenido del archivo en bytes.
         filename: Nombre del archivo (para validar extensión).
-        langfuse_parent: Span padre de Langfuse para tracing (reservado para uso futuro).
 
     Returns:
         Tupla (texto_extraido, tokens_usados).
