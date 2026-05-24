@@ -130,10 +130,26 @@ class TestAnalyzeEndpoint:
         )
         assert response.status_code == 401
 
+    def test_empty_api_key_config_returns_500(self, client: TestClient) -> None:
+        import src.config as config
+
+        original_key = config.LEGALDIFF_API_KEY
+        config.LEGALDIFF_API_KEY = ""
+        try:
+            response = client.post(
+                "/analyze",
+                headers={"X-API-Key": ""},
+                files={
+                    "original_file": _make_upload(),
+                    "amendment_file": _make_upload(),
+                },
+            )
+            assert response.status_code == 500
+        finally:
+            config.LEGALDIFF_API_KEY = original_key
+
     @patch("src.main._run_pipeline")
-    def test_invalid_file_extension(
-        self, mock_pipeline: MagicMock, client: TestClient
-    ) -> None:
+    def test_invalid_file_extension(self, mock_pipeline: MagicMock, client: TestClient) -> None:
         mock_pipeline.side_effect = ValueError("Formato no soportado: .pdf")
 
         response = client.post(
@@ -151,9 +167,7 @@ class TestAnalyzeEndpoint:
         assert response.status_code == 422
 
     @patch("src.main._run_pipeline")
-    def test_pipeline_error(
-        self, mock_pipeline: MagicMock, client: TestClient
-    ) -> None:
+    def test_pipeline_error(self, mock_pipeline: MagicMock, client: TestClient) -> None:
         mock_pipeline.side_effect = RuntimeError("API timeout")
 
         response = client.post(

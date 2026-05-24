@@ -227,7 +227,7 @@ uvicorn src.main:app --reload --port 8000
 ### Opcion 1 — CLI (script directo)
 
 ```bash
-python src/main.py data/test_contracts/documento_1__original.jpg data/test_contracts/documento_1__enmienda.jpg
+python -m src.main data/test_contracts/documento_1__original.jpg data/test_contracts/documento_1__enmienda.jpg
 ```
 
 Imprime el JSON resultado en stdout y los tokens usados en stderr.
@@ -271,7 +271,7 @@ No requiere autenticacion. Retorna `{"status": "ok"}` si la app y la DB estan sa
 
 ## Como probar
 
-### Tests automatizados (29 tests)
+### Tests automatizados (33 tests)
 
 ```bash
 source .venv/bin/activate
@@ -376,4 +376,17 @@ Las decisiones tecnicas estan documentadas en [ADR.json](ADR.json) y [gateway/AD
 - Las imagenes de contratos en `data/test_contracts/` estan en `.gitignore`
 - La app **nunca** loggea contenido de contratos, solo metadata (filename, tokens, latencia, request_id)
 - Autenticacion via `X-API-Key` header con comparacion segura (`secrets.compare_digest`)
+- Validacion de LEGALDIFF_API_KEY no vacia al arranque — previene bypass por `compare_digest("", "")`
+- Las respuestas de error no exponen detalles internos (se loggean en servidor, no se envian al cliente)
 - Archivos se leen en memoria y se descartan — no se persisten en disco
+
+### Mejoras para produccion (fuera de scope educativo)
+
+En un entorno de produccion real, se recomendaria agregar:
+
+- **Validacion de magic bytes**: verificar que los archivos subidos sean JPEG/PNG reales, no solo por extension
+- **Rate limiting**: limitar requests por IP o API key para prevenir abuso
+- **Prompt injection defense**: sanitizar textos extraidos antes de pasarlos como input a los agentes
+- **Container hardening**: ejecutar Docker como usuario no-root, imagen distroless
+- **Rotacion automatica de keys**: integrar con un secrets manager (AWS Secrets Manager, Vault)
+- **WAF/API Gateway**: proteccion contra ataques comunes (OWASP) en el edge

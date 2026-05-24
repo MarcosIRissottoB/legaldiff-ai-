@@ -92,13 +92,18 @@ LiteLLM Proxy en `gateway/` — centraliza llamadas a OpenAI con virtual keys po
 
 ## Langfuse — tracing
 
+Tres mecanismos: `@observe` (spans), `langfuse.openai` drop-in (Vision generations), `CallbackHandler` (LangChain generations).
+
 ```
-@observe("contract-analysis")
-  ├── parse_contract_image (original) — via langfuse.openai drop-in
-  ├── parse_contract_image (amendment) — via langfuse.openai drop-in
-  ├── contextualization_agent.run() — via langfuse.openai drop-in
-  └── extraction_agent.run() — via langfuse.openai drop-in
+@observe("contract-analysis")  ← propagate_attributes con tags y metadata
+  ├── parse_contract_image (original) — @observe + langfuse.openai drop-in → generation
+  ├── parse_contract_image (amendment) — @observe + langfuse.openai drop-in → generation
+  ├── contextualization_agent.run() — @observe + CallbackHandler → ChatOpenAI generation
+  └── extraction_agent.run() — @observe + CallbackHandler → ChatOpenAI generation
 ```
+
+- Lifespan shutdown: `get_client().flush()` para no perder traces pendientes
+- CLI: `Langfuse().flush()` al final del script
 
 ## General behavior
 

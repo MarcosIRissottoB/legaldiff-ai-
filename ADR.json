@@ -12,7 +12,7 @@
     "LLM": "GPT-4o Vision — soporta input de imágenes JPEG/PNG en base64, necesario para contratos escaneados",
     "Validación": "Pydantic v2 + model_validate() explícito post-LLM call — más control sobre errores de validación que response_format directo",
     "Observabilidad": "Langfuse — drop-in replacement del SDK de OpenAI + decorador @observe para trazabilidad automática",
-    "Lenguaje": "Python 3.10+ con python-dotenv para manejo seguro de variables de entorno",
+    "Lenguaje": "Python 3.11+ con python-dotenv para manejo seguro de variables de entorno",
     "Orquestación": "Patrón handoff secuencial — sin frameworks adicionales, orquestación explícita en main.py",
     "API": "FastAPI + uvicorn — entrada HTTP multipart/form-data para integración con LegalMove. Entry point: uvicorn src.main:app",
     "Persistencia": "PostgreSQL + SQLAlchemy + psycopg2-binary — almacena AnalysisRecord con result JSON, tokens_used y latency_ms",

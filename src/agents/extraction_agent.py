@@ -4,6 +4,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langfuse import observe
+from langfuse.langchain import CallbackHandler
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import OPENAI_API_KEY, OPENAI_BASE_URL
@@ -34,7 +35,8 @@ def _invoke_llm(
     llm: ChatOpenAI,
     messages: list,
 ) -> tuple[str, int]:
-    response = llm.invoke(messages)
+    langfuse_handler = CallbackHandler()
+    response = llm.invoke(messages, config={"callbacks": [langfuse_handler]})
     tokens = 0
     if response.usage_metadata:
         tokens = response.usage_metadata.get("total_tokens", 0)

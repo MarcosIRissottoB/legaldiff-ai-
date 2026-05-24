@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langfuse import observe
+from langfuse.langchain import CallbackHandler
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config import OPENAI_API_KEY, OPENAI_BASE_URL
@@ -20,6 +22,7 @@ def _get_llm() -> ChatOpenAI:
         "model": "gpt-4o",
         "api_key": OPENAI_API_KEY,
         "max_tokens": 4096,
+        "model_kwargs": {"response_format": {"type": "json_object"}},
     }
     if OPENAI_BASE_URL:
         kwargs["base_url"] = OPENAI_BASE_URL
@@ -31,7 +34,8 @@ def _invoke_llm(
     llm: ChatOpenAI,
     messages: list,
 ) -> tuple[str, int]:
-    response = llm.invoke(messages)
+    langfuse_handler = CallbackHandler()
+    response = llm.invoke(messages, config={"callbacks": [langfuse_handler]})
     tokens = 0
     if response.usage_metadata:
         tokens = response.usage_metadata.get("total_tokens", 0)
@@ -61,6 +65,13 @@ def run(
     ]
 
     try:
-        return _invoke_llm(llm, messages)
+        raw_content, tokens = _invoke_llm(llm, messages)
     except Exception as e:
         raise RuntimeError(f"Error en ContextualizationAgent: {e}") from e
+
+    try:
+        json.loads(raw_content)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"ContextualizationAgent no devolvió JSON válido: {e}") from e
+
+    return raw_content, tokens

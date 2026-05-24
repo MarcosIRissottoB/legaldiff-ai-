@@ -51,12 +51,12 @@ def valid_change_output() -> ContractChangeOutput:
 def sample_original_text() -> str:
     """Texto real del contrato Par 1 original (TechNova/DataBridge)."""
     return (
-        'CONTRATO DE LICENCIA DE SOFTWARE\n\n'
+        "CONTRATO DE LICENCIA DE SOFTWARE\n\n"
         'El presente Contrato de Licencia de Software ("Contrato") se celebra el 1 de marzo '
         'de 2024 entre TechNova S.A. ("Licenciante") y DataBridge Soluciones S.R.L. '
         '("Licenciatario").\n\n'
         "1. Otorgamiento de Licencia\n"
-        'El Licenciante otorga al Licenciatario una licencia no exclusiva e intransferible '
+        "El Licenciante otorga al Licenciatario una licencia no exclusiva e intransferible "
         'para utilizar el software denominado "NovaAnalytics" únicamente para fines internos '
         "de la empresa.\n\n"
         "2. Plazo\n"
@@ -79,12 +79,12 @@ def sample_original_text() -> str:
 def sample_amendment_text() -> str:
     """Texto real de la enmienda Par 1 (TechNova/DataBridge)."""
     return (
-        'CONTRATO DE LICENCIA DE SOFTWARE - ENMIENDA\n\n'
-        'La presente enmienda modifica el Contrato de Licencia de Software celebrado el 1 de '
+        "CONTRATO DE LICENCIA DE SOFTWARE - ENMIENDA\n\n"
+        "La presente enmienda modifica el Contrato de Licencia de Software celebrado el 1 de "
         'marzo de 2024 entre TechNova S.A. ("Licenciante") y DataBridge Soluciones S.R.L. '
         '("Licenciatario").\n\n'
         "1. Otorgamiento de Licencia\n"
-        'El Licenciante otorga al Licenciatario una licencia no exclusiva para utilizar el '
+        "El Licenciante otorga al Licenciatario una licencia no exclusiva para utilizar el "
         'software denominado "NovaAnalytics" para operaciones internas de negocio.\n\n'
         "2. Plazo\n"
         "El presente contrato tendrá una duración de 24 meses a partir de la fecha de firma.\n\n"
@@ -144,15 +144,3 @@ def expected_changes_pair3() -> dict:
             "Soporte: email→email+tickets",
         ],
     }
-
-
-@pytest.fixture
-def mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Setea variables de entorno para tests."""
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000")
-    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-pub")
-    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("LANGFUSE_HOST", "http://localhost:3000")
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///test.db")
-    monkeypatch.setenv("LEGALDIFF_API_KEY", "test-api-key")

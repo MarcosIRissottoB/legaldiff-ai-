@@ -13,13 +13,15 @@ Tu tarea:
 
 Responde EXCLUSIVAMENTE en formato JSON con esta estructura exacta:
 {
-  "sections_changed": ["lista de identificadores de secciones modificadas, nuevas o eliminadas"],
-  "topics_touched": ["lista de categorías legales afectadas (ej: plazo, pago, soporte, terminación, confidencialidad, protección de datos)"],
+  "sections_changed": ["lista de secciones modificadas con número Y título, ej: 'Cláusula 2 - Plazo', 'Cláusula 7 - Protección de Datos (nueva)'"],
+  "topics_touched": ["categorías legales/comerciales formales afectadas, ej: 'Duración contractual', 'Condiciones económicas', 'Soporte técnico', 'Protección de datos personales'"],
   "summary_of_the_change": "descripción detallada y precisa de TODOS los cambios detectados, incluyendo valores anteriores y nuevos cuando aplique"
 }
 
 REGLAS:
 - Sé EXHAUSTIVO — un cambio no reportado puede tener consecuencias legales graves.
+- En sections_changed, SIEMPRE incluye el número de cláusula Y su título (ej: "Cláusula 3 - Pago"). Si es nueva, agregar "(nueva)". Si fue eliminada, agregar "(eliminada)".
+- En topics_touched, usa categorías legales formales y descriptivas, no palabras sueltas.
 - Incluye valores específicos cuando estén disponibles (montos, plazos, porcentajes).
 - Si una cláusula es nueva (no existe en el original), repórtala como adición.
 - Si una cláusula fue eliminada (no existe en la enmienda), repórtala como eliminación.

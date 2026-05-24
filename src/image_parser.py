@@ -67,7 +67,7 @@ def _call_vision_api(
     return text.strip(), tokens
 
 
-@observe()
+@observe(name="parse-contract-image")
 def parse_contract_image(
     image_bytes: bytes,
     filename: str,

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Query, UploadFile
-from langfuse import observe
+from langfuse import Langfuse, get_client, observe, propagate_attributes
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from src.models import (
     AnalysisRecord,
     AnalysisRecordResponse,
     AnalyzeResponse,
+    ContractChangeOutput,
     PaginatedAnalysesResponse,
 )
 
@@ -49,6 +50,11 @@ async def lifespan(app: FastAPI):
     await logger.ainfo("legaldiff_ai_started")
     yield
 
+    # Shutdown: flush pending Langfuse events
+    langfuse = get_client()
+    langfuse.flush()
+    await logger.ainfo("langfuse_flushed_on_shutdown")
+
 
 app = FastAPI(title="LegalDiff AI", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestIDMiddleware)
@@ -64,18 +70,15 @@ def _run_pipeline(
     """Ejecuta el pipeline secuencial con tracing de Langfuse via @observe."""
     total_tokens = 0
 
-    # Span 1 + 2: parse ambas imágenes
     original_text, tokens_orig = parse_contract_image(original_bytes, original_name)
     total_tokens += tokens_orig
 
     amendment_text, tokens_amend = parse_contract_image(amendment_bytes, amendment_name)
     total_tokens += tokens_amend
 
-    # Span 3: contextualization
     context_map, tokens_ctx = run_contextualization(original_text, amendment_text)
     total_tokens += tokens_ctx
 
-    # Span 4: extraction
     result, tokens_ext = run_extraction(context_map, original_text, amendment_text)
     total_tokens += tokens_ext
 
@@ -92,25 +95,33 @@ async def analyze(
     """Ejecuta el pipeline completo de análisis de cambios contractuales."""
     start_time = time.time()
 
-    # Leer bytes en memoria — no guardar en disco
     original_bytes = await original_file.read()
     amendment_bytes = await amendment_file.read()
     original_name = original_file.filename or "original.jpg"
     amendment_name = amendment_file.filename or "amendment.jpg"
+    request_id = request_id_ctx.get("")
 
     try:
-        result_dict, total_tokens = _run_pipeline(
-            original_bytes, original_name, amendment_bytes, amendment_name
-        )
+        with propagate_attributes(
+            tags=["legaldiff", "contract-analysis"],
+            metadata={
+                "original_filename": original_name,
+                "amendment_filename": amendment_name,
+                "request_id": request_id,
+            },
+        ):
+            result_dict, total_tokens = _run_pipeline(
+                original_bytes, original_name, amendment_bytes, amendment_name
+            )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
+        await logger.aerror("pipeline_error", error=str(e), request_id=request_id)
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "Error en pipeline de análisis",
-                "message": str(e),
-                "request_id": request_id_ctx.get(""),
+                "request_id": request_id,
             },
         ) from e
 
@@ -126,8 +137,6 @@ async def analyze(
     db.add(record)
     db.commit()
     db.refresh(record)
-
-    from src.models import ContractChangeOutput
 
     return AnalyzeResponse(
         analysis_id=record.id,
