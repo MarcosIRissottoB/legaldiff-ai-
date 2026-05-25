@@ -205,6 +205,9 @@ RUBRICA.md
 MANUAL-TEST.md
 PLAN.md
 
+# Claude Code config
+.claude/
+
 # Gateway secrets (real OpenAI API key lives here — NEVER commit)
 gateway/.env
 
