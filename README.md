@@ -1,40 +1,40 @@
 # LegalDiff AI
 
-Sistema multi-agente que reemplaza 40 horas semanales de revision manual de contratos en LegalMove. Recibe imagenes escaneadas (JPEG/PNG) de un contrato original y su enmienda, detecta todos los cambios entre ambos documentos, y devuelve un JSON estructurado y validado con trazabilidad completa via Langfuse.
+Multi-agent system designed to replace ~40 hours per week of manual contract review for a legal-services firm. It takes scanned images (JPEG/PNG) of an original contract and its amendment, detects every change between the two documents, and returns a structured, validated JSON with full traceability through Langfuse.
 
-## Que hace
+## What it does
 
-1. Recibe 2 imagenes (contrato original + enmienda) via CLI o API REST
-2. Extrae el texto legal de cada imagen usando GPT-4o Vision
-3. Un primer agente (ContextualizationAgent) mapea la estructura de ambos documentos — orquestado con LangChain
-4. Un segundo agente (ExtractionAgent) detecta todos los cambios entre ambos — orquestado con LangChain
-5. Valida el resultado con Pydantic (`model_validate()`) y devuelve un JSON estructurado
-6. Registra cada paso en Langfuse con trazabilidad completa (spans jerarquicos)
-7. Persiste el resultado en PostgreSQL para auditoria (modo API)
+1. Receives 2 images (original contract + amendment) via CLI or REST API
+2. Extracts the legal text from each image using GPT-4o Vision
+3. A first agent (ContextualizationAgent) maps the structure of both documents — orchestrated with LangChain
+4. A second agent (ExtractionAgent) detects every change between them — orchestrated with LangChain
+5. Validates the result with Pydantic (`model_validate()`) and returns structured JSON
+6. Logs every step in Langfuse with full traceability (hierarchical spans)
+7. Persists the result in PostgreSQL for auditing (API mode)
 
-## Arquitectura
+## Architecture
 
 ```
                          LegalDiff AI (:8000)
                          ==================
 
   POST /analyze
-  (2 imagenes JPG)
+  (2 JPG images)
         |
         v
   +------------------+     +---------------------------+
   | image_parser     |---->| ContextualizationAgent    |
-  | (GPT-4o Vision)  |     | Mapea secciones y         |
-  | original + amend.|     | correspondencias.         |
-  +------------------+     | NO detecta cambios.       |
+  | (GPT-4o Vision)  |     | Maps sections and         |
+  | original + amend.|     | correspondences.          |
+  +------------------+     | Does NOT detect changes.  |
                            +---------------------------+
                                       |
                                       v
                            +---------------------------+
                            | ExtractionAgent           |
-                           | Recibe mapa + textos.     |
-                           | Detecta adiciones,        |
-                           | eliminaciones y cambios.  |
+                           | Receives map + texts.     |
+                           | Detects additions,        |
+                           | deletions and changes.    |
                            +---------------------------+
                                       |
                                       v
@@ -46,72 +46,72 @@ Sistema multi-agente que reemplaza 40 horas semanales de revision manual de cont
                            +---------------------------+
                                       |
                                       v
-                              PostgreSQL (auditoria)
+                              PostgreSQL (audit)
 ```
 
-### Por que handoff secuencial
+### Why a sequential handoff
 
-El ExtractionAgent necesita el contexto estructurado del ContextualizationAgent para reducir alucinaciones. Procesar en paralelo produciria resultados menos precisos en documentos legales complejos.
+The ExtractionAgent needs the structured context produced by the ContextualizationAgent to reduce hallucinations. Processing both in parallel would produce less accurate results on complex legal documents.
 
-## Estructura del proyecto
+## Project structure
 
 ```
 legaldiff-ai/
 ├── src/
-│   ├── main.py                  # FastAPI entry point + orquestador
-│   ├── config.py                # Variables de entorno + validacion
+│   ├── main.py                  # FastAPI entry point + orchestrator
+│   ├── config.py                # Environment variables + validation
 │   ├── database.py              # SQLAlchemy engine + session
 │   ├── models.py                # Pydantic schemas + SQLAlchemy model
-│   ├── auth.py                  # Autenticacion X-API-Key
-│   ├── logging_config.py        # structlog + middleware X-Request-ID
-│   ├── image_parser.py          # GPT-4o Vision: imagen -> texto
+│   ├── auth.py                  # X-API-Key authentication
+│   ├── logging_config.py        # structlog + X-Request-ID middleware
+│   ├── image_parser.py          # GPT-4o Vision: image -> text
 │   ├── agents/
-│   │   ├── contextualization_agent.py  # Mapea estructura de documentos
-│   │   └── extraction_agent.py         # Detecta cambios contractuales
+│   │   ├── contextualization_agent.py  # Maps document structure
+│   │   └── extraction_agent.py         # Detects contract changes
 │   └── prompts/
-│       ├── image_parser.txt              # Prompt de extraccion de texto
-│       ├── contextualization_agent.txt   # Prompt del analista senior
-│       └── extraction_agent.txt          # Prompt del auditor legal
+│       ├── image_parser.txt              # Text extraction prompt
+│       ├── contextualization_agent.txt   # Senior analyst prompt
+│       └── extraction_agent.txt          # Legal auditor prompt
 ├── tests/
-│   ├── conftest.py              # Fixtures con contratos reales
-│   ├── test_models.py           # Validacion de schemas Pydantic
-│   ├── test_image_parser.py     # Parser con bytes reales + mocks OpenAI
-│   ├── test_agents.py           # Ambos agentes con mocks
-│   └── test_main.py             # Endpoints con TestClient
+│   ├── conftest.py              # Fixtures with real contracts
+│   ├── test_models.py           # Pydantic schema validation
+│   ├── test_image_parser.py     # Parser with real bytes + OpenAI mocks
+│   ├── test_agents.py           # Both agents with mocks
+│   └── test_main.py             # Endpoints with TestClient
 ├── migrations/
-│   ├── env.py                   # Config de Alembic
-│   └── versions/                # Migraciones de DB
+│   ├── env.py                   # Alembic config
+│   └── versions/                # DB migrations
 ├── gateway/                     # AI Gateway (LiteLLM Proxy)
-│   ├── config.yaml              # Modelos, virtual keys, budgets
+│   ├── config.yaml              # Models, virtual keys, budgets
 │   ├── docker-compose.yml       # LiteLLM + PostgreSQL
-│   └── README.md                # Documentacion del Gateway
+│   └── README.md                # Gateway documentation
 ├── data/
-│   └── test_contracts/          # JPGs de prueba (gitignored)
+│   └── test_contracts/          # Test JPGs (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml           # App + PostgreSQL
 ├── alembic.ini
 ├── requirements.txt
 ├── ADR.json                     # Architecture Decision Record
-└── CLAUDE.md                    # Instrucciones para Claude Code
+└── CLAUDE.md                    # Instructions for Claude Code
 ```
 
-## Requisitos
+## Requirements
 
-- Python 3.11+ (**no** usar el `python3` del sistema — en macOS suele ser 3.9 y el código usa sintaxis 3.10+)
-- Docker y Docker Compose
-- API key de OpenAI con acceso a GPT-4o
-- Cuenta en [Langfuse](https://cloud.langfuse.com) (gratis)
+- Python 3.11+ (do **not** use the system `python3` — on macOS it is usually 3.9 and the code uses 3.10+ syntax)
+- Docker and Docker Compose
+- OpenAI API key with GPT-4o access
+- [Langfuse](https://cloud.langfuse.com) account (free)
 
-## Instalacion
+## Installation
 
-### 1. Clonar y entrar al directorio
+### 1. Clone and enter the directory
 
 ```bash
-git clone <repo-url>
-cd legaldiff-ai
+git clone https://github.com/MarcosIRissottoB/legaldiff-ai-.git
+cd legaldiff-ai-
 ```
 
-### 2. Crear virtualenv con Python 3.11+
+### 2. Create a virtualenv with Python 3.11+
 
 ```bash
 python3.11 -m venv .venv
@@ -119,41 +119,41 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Importante**: NO usar `python3` directamente — en macOS es 3.9.x y el codigo usa `str | None` (3.10+). Siempre activar el venv antes de trabajar.
+> **Important**: do NOT use `python3` directly — on macOS it is 3.9.x and the code uses `str | None` (3.10+). Always activate the venv before working.
 
-### 3. Configurar variables de entorno
+### 3. Configure environment variables
 
 ```bash
 cp .env.example .env
 cp gateway/.env.example gateway/.env
 ```
 
-Editar `.env` (raiz) con tus valores:
+Edit `.env` (root) with your values:
 
 ```
-OPENAI_API_KEY=sk-legaldiff-dev          # virtual key del Gateway
-OPENAI_BASE_URL=http://localhost:4000    # apunta al Gateway
-LANGFUSE_PUBLIC_KEY=pk-lf-...           # desde cloud.langfuse.com
-LANGFUSE_SECRET_KEY=sk-lf-...           # desde cloud.langfuse.com
+OPENAI_API_KEY=sk-legaldiff-dev          # Gateway virtual key
+OPENAI_BASE_URL=http://localhost:4000    # points to the Gateway
+LANGFUSE_PUBLIC_KEY=pk-lf-...           # from cloud.langfuse.com
+LANGFUSE_SECRET_KEY=sk-lf-...           # from cloud.langfuse.com
 LANGFUSE_HOST=https://cloud.langfuse.com
 DATABASE_URL=postgresql://legaldiff:legaldiff@localhost:5432/legaldiff
-LEGALDIFF_API_KEY=tu-api-key-inventada
+LEGALDIFF_API_KEY=your-made-up-api-key
 ```
 
-Editar `gateway/.env`:
+Edit `gateway/.env`:
 
 ```
-OPENAI_API_KEY=sk-proj-...              # tu key REAL de OpenAI
-LITELLM_MASTER_KEY=sk-master-...        # inventala
+OPENAI_API_KEY=sk-proj-...              # your REAL OpenAI key
+LITELLM_MASTER_KEY=sk-master-...        # make one up
 DATABASE_URL=postgresql://litellm:litellm@postgres:5432/litellm
 LITELLM_LOG=INFO
 ```
 
-> **Tip**: si no queres usar el Gateway por ahora, comenta `OPENAI_BASE_URL` y pone tu key real de OpenAI directo en `OPENAI_API_KEY` del `.env` raiz.
+> **Tip**: if you don't want to use the Gateway yet, comment out `OPENAI_BASE_URL` and put your real OpenAI key directly in `OPENAI_API_KEY` in the root `.env`.
 
-### 4. Colocar imagenes de prueba
+### 4. Add test images
 
-Los JPGs de contratos van en `data/test_contracts/` (estan en .gitignore, nunca se commitean):
+Contract JPGs go in `data/test_contracts/` (they are in .gitignore and are never committed):
 
 ```
 data/test_contracts/
@@ -165,26 +165,26 @@ data/test_contracts/
 └── documento_3__enmienda.jpg
 ```
 
-## Levantar con Docker
+## Run with Docker
 
 ```bash
 # Build
 docker compose build
 
-# Levantar (app + postgres)
+# Start (app + postgres)
 docker compose up -d
 
-# Verificar
+# Check
 curl http://localhost:8000/health
 ```
 
-Para levantar tambien el AI Gateway:
+To also start the AI Gateway:
 
 ```bash
 cd gateway && docker compose up -d && cd ..
 ```
 
-### Verificar que todo esta corriendo
+### Check that everything is running
 
 ```bash
 docker compose ps                              # app + postgres
@@ -193,46 +193,46 @@ curl http://localhost:8000/health               # app health
 curl http://localhost:4000/health               # gateway health
 ```
 
-## Levantar sin Docker (desarrollo local)
+## Run without Docker (local development)
 
 ```bash
-# Activar venv (creado en paso 2)
+# Activate the venv (created in step 2)
 source .venv/bin/activate
 
-# PostgreSQL local (si usas brew)
+# Local PostgreSQL (if you use brew)
 brew services start postgresql
 createdb legaldiff
 
-# Correr migraciones
+# Run migrations
 alembic upgrade head
 
-# Levantar
+# Start
 uvicorn src.main:app --reload --port 8000
 ```
 
-## Stack tecnico
+## Tech stack
 
-| Componente | Tecnologia |
+| Component | Technology |
 |-----------|------------|
-| LLM | GPT-4o Vision via LangChain (`ChatOpenAI` de `langchain-openai`) |
-| Orquestacion de agentes | LangChain (`SystemMessage`, `HumanMessage`, `ChatOpenAI`) |
-| Validacion | Pydantic v2 con `model_validate()` explicito |
-| Observabilidad | Langfuse v4 con `@observe` decorator + OpenTelemetry |
+| LLM | GPT-4o Vision via LangChain (`ChatOpenAI` from `langchain-openai`) |
+| Agent orchestration | LangChain (`SystemMessage`, `HumanMessage`, `ChatOpenAI`) |
+| Validation | Pydantic v2 with explicit `model_validate()` |
+| Observability | Langfuse v4 with the `@observe` decorator + OpenTelemetry |
 | API | FastAPI + uvicorn (multipart/form-data upload) |
 | DB | PostgreSQL + SQLAlchemy + Alembic |
-| Testing | pytest con fixtures de contratos reales + mocks |
+| Testing | pytest with real-contract fixtures + mocks |
 
-## Como usar
+## Usage
 
-### Opcion 1 — CLI (script directo)
+### Option 1 — CLI (direct script)
 
 ```bash
 python -m src.main data/test_contracts/documento_1__original.jpg data/test_contracts/documento_1__enmienda.jpg
 ```
 
-Imprime el JSON resultado en stdout y los tokens usados en stderr.
+Prints the resulting JSON to stdout and the tokens used to stderr.
 
-### Opcion 2 — API REST
+### Option 2 — REST API
 
 ```bash
 curl -X POST http://localhost:8000/analyze \
@@ -241,20 +241,20 @@ curl -X POST http://localhost:8000/analyze \
   -F "amendment_file=@data/test_contracts/documento_1__enmienda.jpg"
 ```
 
-Respuesta:
+Response:
 
 ```json
 {
-  "analysis_id": "uuid-del-analisis",
+  "analysis_id": "analysis-uuid",
   "result": {
-    "sections_changed": ["Clausula 2 - Plazo", "Clausula 3 - Pago", "..."],
-    "topics_touched": ["Duracion", "Condiciones economicas", "..."],
-    "summary_of_the_change": "Se extiende el plazo de 12 a 24 meses..."
+    "sections_changed": ["Clause 2 - Term", "Clause 3 - Payment", "..."],
+    "topics_touched": ["Duration", "Economic terms", "..."],
+    "summary_of_the_change": "The term is extended from 12 to 24 months..."
   }
 }
 ```
 
-### Listar analisis anteriores
+### List previous analyses
 
 ```bash
 curl "http://localhost:8000/analyses?limit=10&offset=0" \
@@ -267,86 +267,86 @@ curl "http://localhost:8000/analyses?limit=10&offset=0" \
 curl http://localhost:8000/health
 ```
 
-No requiere autenticacion. Retorna `{"status": "ok"}` si la app y la DB estan sanas.
+No authentication required. Returns `{"status": "ok"}` if the app and the DB are healthy.
 
-## Como probar
+## Testing
 
-### Tests automatizados (33 tests)
+### Automated tests (33 tests)
 
 ```bash
 source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Los tests usan SQLite in-memory y mockean las llamadas a OpenAI. No necesitan Docker, API keys, ni conexion a internet.
+The tests use in-memory SQLite and mock the OpenAI calls. They need no Docker, API keys or internet connection.
 
-### Tests manuales con contratos reales
+### Manual tests with real contracts
 
-Ver [MANUAL-TEST.md](MANUAL-TEST.md) para el paso a paso completo con los 3 pares de contratos de prueba.
+See [MANUAL-TEST.md](MANUAL-TEST.md) for the full step-by-step with the 3 test contract pairs.
 
-Los cambios esperados por par:
+Expected changes per pair:
 
-**Par 1 — Licencia de Software** (TechNova / DataBridge):
-- Plazo: 12 -> 24 meses
-- Pago: USD 12.000 -> 15.000
-- Soporte: email -> email + chat
-- Terminacion: 30 -> 60 dias
-- Nueva clausula: Proteccion de Datos
+**Pair 1 — Software License** (TechNova / DataBridge):
+- Term: 12 -> 24 months
+- Payment: USD 12,000 -> 15,000
+- Support: email -> email + chat
+- Termination: 30 -> 60 days
+- New clause: Data Protection
 
-**Par 2 — Consultoria** (Orion / GreenWave):
-- Alcance: +analisis regulatorio
-- Duracion: 6 -> 9 meses
-- Honorarios: USD 8.000 -> 9.500
-- Entregables: mensuales -> quincenales
-- Nueva clausula: Propiedad Intelectual
+**Pair 2 — Consulting** (Orion / GreenWave):
+- Scope: + regulatory analysis
+- Duration: 6 -> 9 months
+- Fees: USD 8,000 -> 9,500
+- Deliverables: monthly -> biweekly
+- New clause: Intellectual Property
 
-**Par 3 — SaaS** (CloudMetrics / RetailPulse):
-- Precio: USD 1.200 -> 1.250
-- Disponibilidad: 99,5% -> 99,9%
-- Soporte: email -> email + tickets
+**Pair 3 — SaaS** (CloudMetrics / RetailPulse):
+- Price: USD 1,200 -> 1,250
+- Availability: 99.5% -> 99.9%
+- Support: email -> email + tickets
 
-## Variables de entorno
+## Environment variables
 
-### .env (raiz) — LegalDiff AI
+### .env (root) — LegalDiff AI
 
-| Variable | Requerida | Descripcion |
-|----------|-----------|-------------|
-| `OPENAI_API_KEY` | Si | Virtual key del Gateway o key real de OpenAI |
-| `OPENAI_BASE_URL` | No | URL del AI Gateway. Comentar para bypass |
-| `LANGFUSE_PUBLIC_KEY` | Si | Public key de Langfuse |
-| `LANGFUSE_SECRET_KEY` | Si | Secret key de Langfuse |
-| `LANGFUSE_HOST` | Si | Host de Langfuse |
-| `DATABASE_URL` | Si | URL de PostgreSQL |
-| `LEGALDIFF_API_KEY` | No | API key para autenticacion de clientes |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | Gateway virtual key or real OpenAI key |
+| `OPENAI_BASE_URL` | No | AI Gateway URL. Comment out to bypass |
+| `LANGFUSE_PUBLIC_KEY` | Yes | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | Yes | Langfuse secret key |
+| `LANGFUSE_HOST` | Yes | Langfuse host |
+| `DATABASE_URL` | Yes | PostgreSQL URL |
+| `LEGALDIFF_API_KEY` | No | API key for client authentication |
 
 ### gateway/.env — AI Gateway
 
-| Variable | Requerida | Descripcion |
-|----------|-----------|-------------|
-| `OPENAI_API_KEY` | Si | Key REAL de OpenAI (la unica copia) |
-| `LITELLM_MASTER_KEY` | Si | Key de admin del Gateway |
-| `DATABASE_URL` | Si | PostgreSQL del Gateway |
-| `LITELLM_LOG` | No | Nivel de log (default: INFO) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | REAL OpenAI key (the only copy) |
+| `LITELLM_MASTER_KEY` | Yes | Gateway admin key |
+| `DATABASE_URL` | Yes | Gateway PostgreSQL |
+| `LITELLM_LOG` | No | Log level (default: INFO) |
 
 ## AI Gateway
 
-LiteLLM Proxy centraliza todas las llamadas a OpenAI. La key real vive solo en el Gateway. Los proyectos usan virtual keys con budgets y rate limits.
+LiteLLM Proxy centralizes every call to OpenAI. The real key lives only in the Gateway. Projects use virtual keys with budgets and rate limits.
 
 - **Proxy**: http://localhost:4000
-- **Dashboard**: http://localhost:4000/ui (metricas y costos)
-- **Portabilidad**: copiar `gateway/` a otro proyecto
+- **Dashboard**: http://localhost:4000/ui (metrics and costs)
+- **Portability**: copy `gateway/` into another project
 
-Ver [gateway/README.md](gateway/README.md) para documentacion completa.
+See [gateway/README.md](gateway/README.md) for the full documentation.
 
-## Trazabilidad con Langfuse
+## Traceability with Langfuse
 
-Cada ejecucion del pipeline genera una traza jerarquica en Langfuse:
+Every pipeline run produces a hierarchical trace in Langfuse:
 
 ```
-contract-analysis (trace raiz — @observe)
+contract-analysis (root trace — @observe)
   ├── parse_contract_image (span — original)
   │   └── GPT-4o Vision (generation — langfuse.openai drop-in)
-  ├── parse_contract_image (span — enmienda)
+  ├── parse_contract_image (span — amendment)
   │   └── GPT-4o Vision (generation — langfuse.openai drop-in)
   ├── contextualization-agent (span — @observe)
   │   └── ChatOpenAI (generation — LangChain)
@@ -354,39 +354,39 @@ contract-analysis (trace raiz — @observe)
       └── ChatOpenAI (generation — LangChain)
 ```
 
-Cada span registra: inputs, outputs, latencia y tokens. Visible en el dashboard de Langfuse (`cloud.langfuse.com`).
+Each span records inputs, outputs, latency and tokens. Visible in the Langfuse dashboard (`cloud.langfuse.com`).
 
-## Decisiones de arquitectura
+## Architecture decisions
 
-Las decisiones tecnicas estan documentadas en [ADR.json](ADR.json) y [gateway/ADR.json](gateway/ADR.json). Resumen:
+The technical decisions are documented in [ADR.json](ADR.json) and [gateway/ADR.json](gateway/ADR.json). Summary:
 
-- **GPT-4o Vision** sobre OCR tradicional: un solo modelo para extraccion + analisis
-- **Handoff secuencial**: el ExtractionAgent necesita contexto del primero para reducir alucinaciones
-- **model_validate() explicito**: mas control sobre errores de validacion que response_format directo
-- **Prompts en archivos .txt**: el equipo de producto puede iterar sin tocar codigo
-- **Multipart upload**: bytes en memoria, no se persisten en disco (max 20MB)
-- **tenacity retry**: 3 intentos con exponential backoff para llamadas a OpenAI
-- **Alembic**: migraciones de DB en produccion (no create_all)
-- **Virtual keys**: la API key real de OpenAI nunca sale del Gateway
+- **GPT-4o Vision** over traditional OCR: a single model for extraction + analysis
+- **Sequential handoff**: the ExtractionAgent needs the first agent's context to reduce hallucinations
+- **Explicit model_validate()**: more control over validation errors than using response_format directly
+- **Prompts in .txt files**: the product team can iterate without touching code
+- **Multipart upload**: bytes stay in memory and are never persisted to disk (max 20MB)
+- **tenacity retry**: 3 attempts with exponential backoff for OpenAI calls
+- **Alembic**: DB migrations in production (no create_all)
+- **Virtual keys**: the real OpenAI API key never leaves the Gateway
 
-## Seguridad
+## Security
 
-- La API key real de OpenAI vive **solo** en `gateway/.env`
-- `.env` y `gateway/.env` estan en `.gitignore` — nunca se commitean
-- Las imagenes de contratos en `data/test_contracts/` estan en `.gitignore`
-- La app **nunca** loggea contenido de contratos, solo metadata (filename, tokens, latencia, request_id)
-- Autenticacion via `X-API-Key` header con comparacion segura (`secrets.compare_digest`)
-- Validacion de LEGALDIFF_API_KEY no vacia al arranque — previene bypass por `compare_digest("", "")`
-- Las respuestas de error no exponen detalles internos (se loggean en servidor, no se envian al cliente)
-- Archivos se leen en memoria y se descartan — no se persisten en disco
+- The real OpenAI API key lives **only** in `gateway/.env`
+- `.env` and `gateway/.env` are in `.gitignore` — never committed
+- Contract images in `data/test_contracts/` are in `.gitignore`
+- The app **never** logs contract content, only metadata (filename, tokens, latency, request_id)
+- Authentication via the `X-API-Key` header with constant-time comparison (`secrets.compare_digest`)
+- Startup check that LEGALDIFF_API_KEY is not empty — prevents a bypass through `compare_digest("", "")`
+- Error responses do not expose internal details (they are logged on the server, not sent to the client)
+- Files are read into memory and discarded — never persisted to disk
 
-### Mejoras para produccion (fuera de scope educativo)
+### Production hardening (outside the educational scope)
 
-En un entorno de produccion real, se recomendaria agregar:
+In a real production environment, we would recommend adding:
 
-- **Validacion de magic bytes**: verificar que los archivos subidos sean JPEG/PNG reales, no solo por extension
-- **Rate limiting**: limitar requests por IP o API key para prevenir abuso
-- **Prompt injection defense**: sanitizar textos extraidos antes de pasarlos como input a los agentes
-- **Container hardening**: ejecutar Docker como usuario no-root, imagen distroless
-- **Rotacion automatica de keys**: integrar con un secrets manager (AWS Secrets Manager, Vault)
-- **WAF/API Gateway**: proteccion contra ataques comunes (OWASP) en el edge
+- **Magic bytes validation**: check that uploaded files are real JPEG/PNG, not just by extension
+- **Rate limiting**: limit requests per IP or API key to prevent abuse
+- **Prompt injection defense**: sanitize extracted text before passing it as input to the agents
+- **Container hardening**: run Docker as a non-root user, distroless image
+- **Automatic key rotation**: integrate with a secrets manager (AWS Secrets Manager, Vault)
+- **WAF/API Gateway**: protection against common attacks (OWASP) at the edge
